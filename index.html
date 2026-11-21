@@ -64,7 +64,7 @@
     <button id="btn-imp" style="display:none;" onclick="document.getElementById('imp-file').click()">📂 Импорт</button>
     <input type="file" id="imp-file" style="display:none" accept=".json" onchange="importChar(event)">
     <button id="btn-logout" style="display:none;" onclick="logoutUser()">Выйти</button>
-    <button class="danger" id="gm-login-btn" onclick="openGmModal()">🔒 Вход Мастера</button>
+    <button id="btn-home-role" onclick="goHomeRole()">🏠 Выбор роли</button>
   </div>
 </header></header>
 
@@ -75,7 +75,7 @@
   <div class="modal-box">
     <h3>Авторизация Мастера</h3>
     <p class="small">Данные Мастера зашифрованы (AES-256-GCM). Введите пароль для расшифровки в оперативной памяти браузера:</p>
-    <input type="password" id="gm-pass-input" placeholder="Мастер-пароль..." onkeydown="if(event.key==='Enter') unlockGM()">
+    <input type="password" id="gm-pass-input" autocomplete="new-password" placeholder="Мастер-пароль..." onkeydown="if(event.key==='Enter') unlockGM()">
     <p class="warn" id="gm-err" style="display:none">Неверный пароль!</p>
     <div style="display:flex; gap:8px; margin-top:14px; justify-content:flex-end;">
       <button onclick="closeGmModal()">Отмена</button>
@@ -374,8 +374,8 @@ function importChar(e) {
   r.readAsText(file);
 }
 
-function openGmModal() { if (GM_DATA) { renderGM(); return; } document.getElementById('gm-modal').classList.add('open'); }
-function closeGmModal() { document.getElementById('gm-modal').classList.remove('open'); }
+function openGmModal() { if (GM_DATA) { renderGM(); return; } const inp = document.getElementById('gm-pass-input'); if(inp) inp.value=''; document.getElementById('gm-err').style.display='none'; document.getElementById('gm-modal').classList.add('open'); }
+function closeGmModal() { const inp = document.getElementById('gm-pass-input'); if(inp) inp.value=''; document.getElementById('gm-modal').classList.remove('open'); }
 function b64ToBytes(b64) { return Uint8Array.from(atob(b64), c => c.charCodeAt(0)); }
 
 async function unlockGM() {
@@ -386,7 +386,7 @@ async function unlockGM() {
     const decBuf = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64ToBytes(SECRET.iv) }, key, b64ToBytes(SECRET.ct));
     GM_DATA = JSON.parse(new TextDecoder().decode(decBuf));
     document.getElementById('gm-err').style.display = 'none'; closeGmModal();
-    document.getElementById('gm-login-btn').innerText = "🔓 Ширма Мастера"; renderGM();
+    const inp = document.getElementById('gm-pass-input'); if(inp) inp.value=''; renderGM();
   } catch (e) { document.getElementById('gm-err').style.display = 'block'; }
 }
 
@@ -396,7 +396,7 @@ function renderGM() {
   view.innerHTML = `<div class="card">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
       <h2 style="margin:0;border:none;">🔥 Закрытая Ширма Мастера</h2>
-      <button onclick="GM_DATA=null; document.getElementById('gm-login-btn').innerText='🔒 Вход Мастера'; showRoleChoice()">Выйти из Ширмы</button>
+      <button onclick="GM_DATA=null; showRoleChoice()">Выйти из Ширмы</button>
     </div>
     <div class="sheet-tabs">
       <button class="sheet-tab ${gmTab==='codes'?'active':''}" onclick="gmTab='codes'; renderGM()">Коды Рецептов и Углей</button>
@@ -413,23 +413,47 @@ function renderGM() {
       ${GM_DATA.unlockables.map(u => `<tr><td><b style="color:var(--gold)">${u.code}</b></td><td>${u.tag}</td><td><b>${u.title}</b></td><td>${u.lines.join('<br>')}</td></tr>`).join('')}
       </table>`;
   } else if (gmTab === 'liks') {
-    box.innerHTML = GM_DATA.liks.map(l => `<details style="margin-bottom:10px;border:1px solid var(--border);padding:10px;border-radius:6px;">
-      <summary style="cursor:pointer;color:var(--gold);font-weight:bold;">${l.id}. ${l.name} (Полный архив 1–20 + Коды Ступеней)</summary>
-      <details style="margin:8px 0;background:var(--card);padding:8px;border-radius:6px;">
-        <summary style="cursor:pointer;color:#7ec699;">🔑 Коды разблокировки Ступеней (2→20) для выдачи игроку</summary>
-        <table><tr><th>Ступень</th><th>Код для игрока</th><th>Кратко</th></tr>
+    const fmtFullText = (txt) => {
+      if (!txt) return '';
+      return txt.split('\n').map(line => {
+        const s = line.trim();
+        if (!s) return '';
+        if (/^(\d+-я Ступень|Ступень \d+|Архетип|Шёпот Лика|Пороговое Деяние|Ключевая|Суть:)/i.test(s)) {
+          return `<div style="color:var(--gold);font-weight:bold;margin-top:10px;border-bottom:1px solid #2b2b34;padding-bottom:2px;">${s}</div>`;
+        }
+        return `<div style="margin:4px 0;color:var(--text);line-height:1.45;">${s}</div>`;
+      }).join('');
+    };
+
+    box.innerHTML = GM_DATA.liks.map(l => `<details style="margin-bottom:10px;border:1px solid var(--border);padding:12px;border-radius:8px;background:#16161b;">
+      <summary style="cursor:pointer;color:var(--gold);font-weight:bold;font-size:15px;">${l.id}. ${l.name}</summary>
+      
+      <details style="margin:10px 0 6px 0;background:var(--card);padding:10px;border-radius:6px;border:1px solid var(--border);">
+        <summary style="cursor:pointer;color:var(--gold);font-weight:bold;">📜 Описание, Архетипы и Способности (1–20)</summary>
+        <div style="margin-top:8px;font-size:13px;">${fmtFullText(l.full_text)}</div>
+      </details>
+
+      <details style="margin:6px 0;background:var(--card);padding:10px;border-radius:6px;border:1px solid var(--border);">
+        <summary style="cursor:pointer;color:#7ec699;font-weight:bold;">🔑 Коды разблокировки Ступеней (2→20) для игрока</summary>
+        <table style="margin-top:8px;"><tr><th>Ст.</th><th>Код</th><th>Что открывает</th></tr>
         ${(l.step_codes||[]).map(sc => `<tr><td><b>${sc.step}</b></td><td><b style="color:var(--gold)">${sc.code}</b></td><td class="small">${sc.summary}</td></tr>`).join('')}
         </table>
       </details>
-      <details style="margin:8px 0;background:var(--card);padding:8px;border-radius:6px;">
-        <summary style="cursor:pointer;color:var(--gold);">📜 Полное описание способностей, Архетипов и Шёпотов (1–20)</summary>
-        <div class="small" style="white-space:pre-line;margin-top:8px;">${l.full_text || ''}</div>
+
+      <details style="margin:6px 0;background:var(--card);padding:10px;border-radius:6px;border:1px solid var(--border);">
+        <summary style="cursor:pointer;color:#6ab0f3;font-weight:bold;">🧪 Эликсиры Восхождения и Символы (0→20)</summary>
+        <table style="margin-top:8px;"><tr><th>Ст.</th><th>Символ</th><th>Сакральное Условие</th><th>Источник</th></tr>
+        ${l.recipes.map(r => `<tr><td><b>${r.step}</b></td><td><b>${r.symbol}</b></td><td>${r.condition}</td><td>${r.source}</td></tr>`).join('')}
+        </table>
       </details>
-      <table><tr><th>Ст.</th><th>Символ</th><th>Условие</th><th>Принцип</th><th>Резонанс / Диссонанс</th></tr>
-      ${l.recipes.map((r, i) => {
-        const pr = l.principles[i-1] || {};
-        return `<tr><td>${r.step}</td><td>${r.symbol}</td><td>${r.condition}</td><td>${pr.principle||'—'}</td><td><div class="res">${pr.resonance||''}</div><div class="dis">${pr.dissonance||''}</div></td></tr>`;
-      }).join('')}</table></details>`).join('');
+
+      <details style="margin:6px 0;background:var(--card);padding:10px;border-radius:6px;border:1px solid var(--border);">
+        <summary style="cursor:pointer;color:#e06c75;font-weight:bold;">⚖️ Скрытые Принципы (Резонанс / Диссонанс)</summary>
+        <table style="margin-top:8px;"><tr><th>Ст.</th><th>Скрытый Принцип</th><th>Резонанс / Диссонанс</th></tr>
+        ${l.principles.map(p => `<tr><td><b>${p.step}</b></td><td>${p.principle}</td><td><div class="res">+ ${p.resonance}</div><div class="dis" style="margin-top:4px;">− ${p.dissonance}</div></td></tr>`).join('')}
+        </table>
+      </details>
+    </details>`).join('');
   } else if (gmTab === 'bestiary') {
     box.innerHTML = `<div class="grid-2">` + GM_DATA.bestiary.map(b => `<div class="card" style="background:var(--card)">
       <span class="badge">${b.act}</span><h3>${b.name}</h3><p class="small">${b.description}</p>
@@ -454,6 +478,14 @@ async function hashStr(str) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+
+
+function goHomeRole() {
+  CUR_USER = null;
+  CHAR = null;
+  sessionStorage.removeItem('fh_cur_user');
+  showRoleChoice();
+}
 
 function showRoleChoice() {
   document.getElementById('char-select').style.display = 'none';
